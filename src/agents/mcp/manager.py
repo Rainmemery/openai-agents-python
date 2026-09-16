@@ -103,6 +103,12 @@ class _ServerWorker:
                     raise ValueError(f"Unknown command: {command.action}")
                 if not command.future.cancelled():
                     command.future.set_result(None)
+            except asyncio.CancelledError:
+                # Cancelling the worker task must stop the worker, not be consumed as a
+                # command failure; resolve the in-flight command so awaiters do not hang.
+                if not command.future.done():
+                    command.future.cancel()
+                raise
             except BaseException as exc:
                 if not command.future.cancelled():
                     command.future.set_exception(exc)

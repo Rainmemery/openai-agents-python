@@ -1280,3 +1280,27 @@ async def test_manager_restores_one_shot_iterable_servers_after_a_failed_connect
     # drop_failed_servers=False keeps failed servers active, so the restored list must match
     # what an equivalent list argument produces.
     assert manager.active_servers == [server]
+
+
+class _HangingConnectServer:
+    # only the attributes _ServerWorker touches are needed
+    async def connect(self) -> None:
+        await asyncio.Event().wait()
+
+
+@pytest.mark.asyncio
+async def test_server_worker_terminates_when_the_worker_task_is_cancelled() -> None:
+    server = cast(MCPServer, _HangingConnectServer())
+
+    worker = manager_module._ServerWorker(server=server)
+    connect_task = asyncio.create_task(worker.connect(None))
+    await asyncio.sleep(0.01)
+    assert not worker.is_done
+
+    worker._task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await worker._task
+
+    await asyncio.sleep(0)
+    assert connect_task.cancelled()
+    assert worker.is_done
